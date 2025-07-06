@@ -1,4 +1,4 @@
-# 🚀 M365 Audit Log Collector for Azure Sentinel
+# 🚀 M365 Audit Log Collector
 
 <div align="center">
 
