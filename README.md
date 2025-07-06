@@ -244,11 +244,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 🌟 Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=yourusername/M365-Audit-Log-Collector&type=Date)](https://star-history.com/#yourusername/M365-Audit-Log-Collector&Date)
-
----
 
 <div align="center">
 
