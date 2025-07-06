@@ -240,7 +240,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 👨‍💻 Author
 
 **Bilel Azaiez**  
-*Cybersecurity & Cloud Solutions Specialist*
+*Cloud Solution Architect for Data Security @MSFT*
 
 ---
 
@@ -252,7 +252,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-**Made with ❤️ for the cybersecurity community**
+**Made with ❤️ for the Data Security & Purview community**
 
 *If this project helped you, please consider giving it a ⭐!*
 
