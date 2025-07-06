@@ -11,7 +11,7 @@ $requiredModules = @(
     'Az.OperationalInsights',
     'Az.KeyVault',
     'Az.Storage',
-    'Az.Web',
+    'Az.Websites',
     'Az.ApplicationInsights',
     'AzureAD'
 )
