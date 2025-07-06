@@ -46,7 +46,7 @@ This **enterprise-grade solution** collects Microsoft 365 audit logs via the Off
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   Microsoft 365 │    │  Azure Function  │    │ Azure Sentinel  │
 │                 │    │                  │    │                 │
-│ • Exchange      │───▶│ • Collects Logs  │───▶│ • M365*_CL      │
+│ • Exchange      │──▶│ • Collects Logs  │───▶│ • M365*_CL      │
 │ • SharePoint    │    │ • Enriches Data  │    │ • Enriched      │
 │ • Teams         │    │ • Deduplicates   │    │ • Organized     │
 │ • Azure AD      │    │ • Monitors       │    │ • Query Ready   │
