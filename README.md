@@ -9,7 +9,6 @@
 
 **🔥 Enterprise-Grade M365 Audit Log Collection & Enrichment Solution 🔥**
 
-*Automated • Scalable • Production-Ready*
 
 
 </div>
