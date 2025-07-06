@@ -11,9 +11,6 @@
 
 *Automated • Scalable • Production-Ready*
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PowerShell Version](https://img.shields.io/badge/PowerShell-7.4+-blue)](https://github.com/PowerShell/PowerShell)
-[![Azure Functions](https://img.shields.io/badge/Azure_Functions-4.0-green)](https://azure.microsoft.com/en-us/services/functions/)
 
 </div>
 
