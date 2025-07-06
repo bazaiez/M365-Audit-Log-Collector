@@ -1,0 +1,296 @@
+{
+  "alertRules": [
+    {
+      "name": "M365 Audit Collection Failure",
+      "description": "Triggers when M365 audit log collection fails for more than 2 consecutive runs",
+      "severity": "High",
+      "query": "M365AuditCollectionSummary_CL | where TimeGenerated > ago(15m) | where Success_b == false | count",
+      "threshold": 2,
+      "operator": "GreaterThanOrEqual",
+      "frequency": "PT5M",
+      "timeWindow": "PT15M",
+      "actionGroup": "M365-Audit-Alerts",
+      "enabled": true,
+      "tags": {
+        "Service": "M365AuditCollector",
+        "AlertType": "CollectionFailure"
+      }
+    },
+    {
+      "name": "M365 Audit Collection Duration Alert",
+      "description": "Triggers when audit log collection takes longer than 10 minutes",
+      "severity": "Medium", 
+      "query": "M365AuditCollectionSummary_CL | where TimeGenerated > ago(10m) | where DurationSeconds_d > 600",
+      "threshold": 1,
+      "operator": "GreaterThanOrEqual",
+      "frequency": "PT5M",
+      "timeWindow": "PT10M",
+      "actionGroup": "M365-Audit-Alerts",
+      "enabled": true,
+      "tags": {
+        "Service": "M365AuditCollector",
+        "AlertType": "PerformanceIssue"
+      }
+    },
+    {
+      "name": "M365 Audit Low Data Volume",
+      "description": "Triggers when audit log collection returns significantly fewer records than expected",
+      "severity": "Medium",
+      "query": "M365AuditCollectionSummary_CL | where TimeGenerated > ago(1h) | summarize AvgRecords = avg(TotalRecords_d) | where AvgRecords < 100",
+      "threshold": 1,
+      "operator": "GreaterThanOrEqual", 
+      "frequency": "PT15M",
+      "timeWindow": "PT1H",
+      "actionGroup": "M365-Audit-Alerts",
+      "enabled": true,
+      "tags": {
+        "Service": "M365AuditCollector",
+        "AlertType": "DataVolume"
+      }
+    },
+    {
+      "name": "M365 Audit High Error Rate",
+      "description": "Triggers when error rate exceeds 10% in the last hour",
+      "severity": "High",
+      "query": "M365AuditCollectionSummary_CL | where TimeGenerated > ago(1h) | summarize ErrorRate = avg(ErrorCount_d) / avg(TotalRecords_d) * 100 | where ErrorRate > 10",
+      "threshold": 1,
+      "operator": "GreaterThanOrEqual",
+      "frequency": "PT15M", 
+      "timeWindow": "PT1H",
+      "actionGroup": "M365-Audit-Alerts",
+      "enabled": true,
+      "tags": {
+        "Service": "M365AuditCollector",
+        "AlertType": "HighErrorRate"
+      }
+    },
+    {
+      "name": "M365 Audit No Data Received",
+      "description": "Triggers when no audit data is received for 30 minutes",
+      "severity": "Critical",
+      "query": "search \"M365*_CL\" | where TimeGenerated > ago(30m) | where Type !contains \"Summary\" and Type !contains \"Error\" | count",
+      "threshold": 1,
+      "operator": "LessThan",
+      "frequency": "PT10M",
+      "timeWindow": "PT30M", 
+      "actionGroup": "M365-Audit-Critical",
+      "enabled": true,
+      "tags": {
+        "Service": "M365AuditCollector",
+        "AlertType": "NoDataReceived"
+      }
+    },
+    {
+      "name": "M365 Failed Login Attempts",
+      "description": "Triggers when a user has more than 10 failed login attempts in 15 minutes",
+      "severity": "High",
+      "query": "M365AzureADAudit_CL | where TimeGenerated > ago(15m) | where Operation_s =~ \"UserLoginFailed\" | summarize FailedAttempts = count() by UserId_s | where FailedAttempts > 10",
+      "threshold": 1,
+      "operator": "GreaterThanOrEqual",
+      "frequency": "PT5M",
+      "timeWindow": "PT15M",
+      "actionGroup": "M365-Security-Alerts", 
+      "enabled": true,
+      "tags": {
+        "Service": "M365AuditCollector",
+        "AlertType": "SecurityThreat"
+      }
+    },
+    {
+      "name": "M365 DLP Policy Violations",
+      "description": "Triggers when DLP policy violations exceed 20 in the last hour",
+      "severity": "Medium",
+      "query": "M365DLP*_CL | where TimeGenerated > ago(1h) | count",
+      "threshold": 20,
+      "operator": "GreaterThanOrEqual",
+      "frequency": "PT15M",
+      "timeWindow": "PT1H",
+      "actionGroup": "M365-Compliance-Alerts",
+      "enabled": true,
+      "tags": {
+        "Service": "M365AuditCollector",
+        "AlertType": "ComplianceViolation"
+      }
+    },
+    {
+      "name": "M365 Bulk File Operations",
+      "description": "Triggers when a user performs more than 50 file operations in 5 minutes",
+      "severity": "Medium", 
+      "query": "M365SharePointAudit_CL | where TimeGenerated > ago(5m) | where Operation_s in (\"FileDownloaded\", \"FileCopied\", \"FileDeleted\") | summarize OperationCount = count() by UserId_s | where OperationCount > 50",
+      "threshold": 1,
+      "operator": "GreaterThanOrEqual",
+      "frequency": "PT5M",
+      "timeWindow": "PT5M",
+      "actionGroup": "M365-Security-Alerts",
+      "enabled": true,
+      "tags": {
+        "Service": "M365AuditCollector", 
+        "AlertType": "BulkOperations"
+      }
+    },
+    {
+      "name": "M365 External File Sharing",
+      "description": "Triggers when external file sharing events exceed 10 in an hour",
+      "severity": "Low",
+      "query": "M365SharePointAudit_CL | where TimeGenerated > ago(1h) | where Operation_s contains \"Share\" and (Operation_s contains \"External\" or Operation_s contains \"Anonymous\") | count",
+      "threshold": 10,
+      "operator": "GreaterThanOrEqual",
+      "frequency": "PT15M",
+      "timeWindow": "PT1H",
+      "actionGroup": "M365-Compliance-Alerts",
+      "enabled": true,
+      "tags": {
+        "Service": "M365AuditCollector",
+        "AlertType": "ExternalSharing"
+      }
+    },
+    {
+      "name": "M365 Admin Activity Spike",
+      "description": "Triggers when administrative activities exceed normal baseline by 300%",
+      "severity": "Medium",
+      "query": "union M365*_CL | where TimeGenerated > ago(1h) | where Operation_s contains \"Admin\" or Operation_s contains \"Set\" or Operation_s contains \"Delete\" | count",
+      "threshold": 100,
+      "operator": "GreaterThanOrEqual",
+      "frequency": "PT15M", 
+      "timeWindow": "PT1H",
+      "actionGroup": "M365-Security-Alerts",
+      "enabled": true,
+      "tags": {
+        "Service": "M365AuditCollector",
+        "AlertType": "AdminActivitySpike"
+      }
+    }
+  ],
+  "actionGroups": [
+    {
+      "name": "M365-Audit-Alerts",
+      "description": "Standard alerts for M365 audit collection issues",
+      "receivers": [
+        {
+          "type": "email",
+          "name": "IT Operations",
+          "emailAddress": "itops@yourcompany.com"
+        },
+        {
+          "type": "sms",
+          "name": "On-Call Engineer", 
+          "phoneNumber": "+1234567890"
+        }
+      ],
+      "tags": {
+        "Team": "IT Operations",
+        "Severity": "Standard"
+      }
+    },
+    {
+      "name": "M365-Audit-Critical",
+      "description": "Critical alerts for M365 audit collection failures",
+      "receivers": [
+        {
+          "type": "email",
+          "name": "IT Manager",
+          "emailAddress": "itmanager@yourcompany.com"
+        },
+        {
+          "type": "email", 
+          "name": "IT Operations",
+          "emailAddress": "itops@yourcompany.com"
+        },
+        {
+          "type": "sms",
+          "name": "On-Call Manager",
+          "phoneNumber": "+1234567891"
+        },
+        {
+          "type": "webhook",
+          "name": "Teams Channel",
+          "webhookUrl": "https://outlook.office.com/webhook/your-teams-webhook-url"
+        }
+      ],
+      "tags": {
+        "Team": "IT Operations",
+        "Severity": "Critical"
+      }
+    },
+    {
+      "name": "M365-Security-Alerts", 
+      "description": "Security-related alerts from M365 audit logs",
+      "receivers": [
+        {
+          "type": "email",
+          "name": "Security Team",
+          "emailAddress": "security@yourcompany.com"
+        },
+        {
+          "type": "email",
+          "name": "SOC Team",
+          "emailAddress": "soc@yourcompany.com"
+        }
+      ],
+      "tags": {
+        "Team": "Security Operations",
+        "Severity": "Security"
+      }
+    },
+    {
+      "name": "M365-Compliance-Alerts",
+      "description": "Compliance and data governance alerts",
+      "receivers": [
+        {
+          "type": "email",
+          "name": "Compliance Team", 
+          "emailAddress": "compliance@yourcompany.com"
+        },
+        {
+          "type": "email",
+          "name": "Data Protection Officer",
+          "emailAddress": "dpo@yourcompany.com"
+        }
+      ],
+      "tags": {
+        "Team": "Compliance",
+        "Severity": "Governance"
+      }
+    }
+  ],
+  "alertConfiguration": {
+    "notes": [
+      "⚠️ IMPORTANT: Replace email addresses and phone numbers with your organization's contact information",
+      "🔧 CUSTOMIZATION: Adjust thresholds based on your environment's normal activity levels",
+      "📊 BASELINE: Monitor for 1-2 weeks to establish normal baselines before enabling all alerts",
+      "🕐 TIMING: Consider your organization's time zones when setting frequency and time windows",
+      "📞 ESCALATION: Set up escalation policies for critical alerts that aren't acknowledged"
+    ],
+    "deploymentInstructions": [
+      "1. Update all email addresses and contact information",
+      "2. Deploy action groups first using Azure CLI or PowerShell",
+      "3. Deploy alert rules referencing the action group names",
+      "4. Test each alert rule with sample data",
+      "5. Monitor alert frequency and adjust thresholds as needed"
+    ],
+    "sampleDeploymentScript": {
+      "powershell": [
+        "# Deploy Action Groups",
+        "$actionGroup = New-AzActionGroup -ResourceGroupName 'rg-m365-audit-prod' -Name 'M365-Audit-Alerts' -ShortName 'M365Alerts'",
+        "",
+        "# Add email receiver",
+        "$emailReceiver = New-AzActionGroupReceiver -Name 'IT Operations' -EmailReceiver -EmailAddress 'itops@yourcompany.com'",
+        "Set-AzActionGroup -ResourceGroupName 'rg-m365-audit-prod' -Name 'M365-Audit-Alerts' -Receiver $emailReceiver",
+        "",
+        "# Deploy Alert Rules", 
+        "$alertRule = New-AzScheduledQueryRule -ResourceGroupName 'rg-m365-audit-prod' -Location 'East US' -DisplayName 'M365 Audit Collection Failure' -Description 'Triggers when collection fails' -Severity 2 -Enabled",
+        "",
+        "# Set query and conditions",
+        "$condition = New-AzScheduledQueryRuleCondition -Query 'M365AuditCollectionSummary_CL | where TimeGenerated > ago(15m) | where Success_b == false | count' -TimeAggregation 'Count' -Operator 'GreaterThanOrEqual' -Threshold 2",
+        "Set-AzScheduledQueryRule -ResourceGroupName 'rg-m365-audit-prod' -Name 'M365 Audit Collection Failure' -Condition $condition"
+      ]
+    },
+    "testingRecommendations": [
+      "🧪 Generate test events by temporarily disabling a service",
+      "📧 Verify email delivery and formatting",
+      "📱 Test SMS notifications during business hours",  
+      "🔕 Test alert suppression and grouping logic",
+      "⏰ Verify time zone handling in alert timestamps"
+    ]
+  }
+}

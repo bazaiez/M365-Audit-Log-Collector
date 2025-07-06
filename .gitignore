@@ -1,0 +1,95 @@
+# Build outputs
+bin/
+obj/
+out/
+
+# Package files
+*.zip
+*.tar.gz
+*.rar
+
+# Configuration files with secrets
+*.json
+!function.json
+!monitoring-workbook.json
+!alert-rules.json
+!host.json
+!requirements.psd1
+
+# Azure Function App local settings
+local.settings.json
+.env
+
+# PowerShell module cache
+PSGetModuleInfo.xml
+
+# VS Code settings
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Azure CLI cache
+.azure/
+
+# PowerShell execution policy bypass files
+*.ps1xml
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Working directories (created by scripts)
+C:/M365-Audit-Collector/
+/M365-Audit-Collector/
+
+# IDE files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Test results
+TestResults/
+
+# Coverage reports
+coverage/
+*.coverage
+*.coveragexml
+
+# NuGet packages
+*.nupkg
+packages/
+
+# Azure Resource Manager templates
+*.parameters.json
+!template.parameters.json
+
+# Azure DevOps
+.artifacts/
+
+# Node modules (if any JavaScript components added)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

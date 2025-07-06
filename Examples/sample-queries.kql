@@ -1,0 +1,702 @@
+// M365 Audit Log Collector - Sample KQL Queries
+// Author: Bilel Azaiez
+// Copy and paste these queries into Log Analytics
+
+// =============================================
+// COLLECTION HEALTH & MONITORING
+// =============================================
+
+// Check last 24 hours of collection activity
+M365AuditCollectionSummary_CL
+| where TimeGenerated > ago(24h)
+| project TimeGenerated, TotalRecords_d, Success_b, DurationSeconds_d, ErrorCount_d
+| order by TimeGenerated desc
+
+// Data volume by service type
+search "M365*_CL"
+| where TimeGenerated > ago(24h)
+| where Type !contains "Summary" and Type !contains "Error"
+| summarize RecordCount = count() by Type
+| order by RecordCount desc
+
+// =============================================
+// MICROSOFT INFORMATION PROTECTION (MIP) ANALYSIS
+// =============================================
+
+// Applied sensitivity labels across all workloads
+M365*_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s in ("SensitivityLabelApplied", "FileSensitivityLabelChanged", "SensitivityLabeledFileApplied")
+| extend ActionSource = case(
+    ActionSource_d == 0, "None",
+    ActionSource_d == 1, "Default",
+    ActionSource_d == 2, "Auto",
+    ActionSource_d == 3, "Manual",
+    ActionSource_d == 4, "Recommended",
+    "Unknown"
+)
+| join kind=leftouter (
+    M365SensitivityLabels_CL
+    | project Id_g, DisplayName_s, Priority_d
+) on $left.SensitivityLabelId_g == $right.Id_g
+| project TimeGenerated, UserId_s, UserDisplayName_s, Operation_s, ActionSource, LabelName = DisplayName_s, Platform_s, Application_s, Workload_s
+| order by TimeGenerated desc
+
+// Sensitivity label changes and upgrades/downgrades
+M365*_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s in ("SensitivityLabelUpdated", "SensitivityLabelChanged")
+| where isnotempty(OldSensitivityLabelId_g) and isnotempty(SensitivityLabelId_g)
+| extend LabelEventType = case(
+    LabelEventType_d == 1, "LabelUpgraded",
+    LabelEventType_d == 2, "LabelDowngraded", 
+    LabelEventType_d == 3, "LabelRemoved",
+    LabelEventType_d == 4, "LabelChangedSameOrder",
+    "Unknown"
+)
+| join kind=leftouter (
+    M365SensitivityLabels_CL
+    | project Id_g, DisplayName_s, Priority_d
+) on $left.SensitivityLabelId_g == $right.Id_g
+| join kind=leftouter (
+    M365SensitivityLabels_CL
+    | project Id_g, DisplayName_s as OldDisplayName_s, Priority_d as OldPriority_d
+) on $left.OldSensitivityLabelId_g == $right.Id_g
+| project TimeGenerated, UserId_s, UserDisplayName_s, LabelEventType, 
+    OldLabel = OldDisplayName_s, NewLabel = DisplayName_s, 
+    JustificationText_s, ObjectId_s, Application_s
+| order by TimeGenerated desc
+
+// Sensitivity label removals (potential security risk)
+M365*_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s =~ "SensitivityLabelRemoved"
+| join kind=leftouter (
+    M365SensitivityLabels_CL
+    | project Id_g, DisplayName_s
+) on $left.OldSensitivityLabelId_g == $right.Id_g
+| project TimeGenerated, UserId_s, UserDisplayName_s, RemovedLabel = DisplayName_s, 
+    JustificationText_s, ObjectId_s, ClientIP_s, UserAgent_s
+| order by TimeGenerated desc
+
+// Auto-labeling policy matches
+M365*_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s =~ "SensitivityLabelPolicyMatched" or Operation_s =~ "AutoSensitivityLabelRuleMatch"
+| extend ActionSource = case(
+    ActionSource_d == 2, "Auto-Applied",
+    ActionSource_d == 4, "Recommended",
+    "Other"
+)
+| join kind=leftouter (
+    M365SensitivityLabels_CL
+    | project Id_g, DisplayName_s
+) on $left.SensitivityLabelId_g == $right.Id_g
+| project TimeGenerated, UserId_s, UserDisplayName_s, Operation_s, ActionSource, 
+    LabelName = DisplayName_s, PolicyId_g, ObjectId_s
+| order by TimeGenerated desc
+
+// Sensitivity labeled file operations
+M365*_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s in ("SensitivityLabeledFileOpened", "SensitivityLabeledFileRenamed")
+| join kind=leftouter (
+    M365SensitivityLabels_CL
+    | project Id_g, DisplayName_s
+) on $left.SensitivityLabelId_g == $right.Id_g
+| project TimeGenerated, UserId_s, UserDisplayName_s, Operation_s, 
+    LabelName = DisplayName_s, ObjectId_s, ClientIP_s, Platform_s
+| order by TimeGenerated desc
+
+// =============================================
+// SECURITY ANALYSIS
+// =============================================
+
+// Failed login attempts (potential brute force)
+M365AzureADAudit_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s =~ "UserLoginFailed"
+| summarize FailedAttempts = count() by UserId_s, UserDisplayName_s, ClientIP_s
+| where FailedAttempts > 5
+| order by FailedAttempts desc
+
+// Administrative actions across all services
+union M365*_CL
+| where TimeGenerated > ago(24h)
+| where Operation_s contains "Admin" or Operation_s contains "Set" or Operation_s contains "Delete"
+| project TimeGenerated, Type, Operation_s, UserId_s, UserDisplayName_s, UserDepartment_s
+| order by TimeGenerated desc
+
+// DLP policy violations
+M365DLP*_CL
+| where TimeGenerated > ago(7d)
+| summarize ViolationCount = count() by PolicyName_s, Severity_s, UserId_s, UserDisplayName_s
+| order by ViolationCount desc
+
+// =============================================
+// EXCHANGE ANALYSIS
+// =============================================
+
+// Email forwarding rules (potential compromise indicator)
+M365ExchangeAudit_CL
+| where TimeGenerated > ago(30d)
+| where Operation_s contains "Forward" or Operation_s contains "Rule"
+| project TimeGenerated, UserId_s, UserDisplayName_s, Operation_s, Parameters_s
+| order by TimeGenerated desc
+
+// Mailbox access patterns
+M365ExchangeAudit_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s in ("MailboxLogin", "FolderBind")
+| summarize AccessCount = count() by UserId_s, UserDisplayName_s, ClientInfoString_s
+| order by AccessCount desc
+
+// Large email operations (potential data exfiltration)
+M365ExchangeAudit_CL
+| where TimeGenerated > ago(24h)
+| where Operation_s =~ "Send"
+| where Parameters_s contains "Size"
+| project TimeGenerated, UserId_s, UserDisplayName_s, Parameters_s, ClientIP_s
+| order by TimeGenerated desc
+
+// =============================================
+// SHAREPOINT & ONEDRIVE ANALYSIS
+// =============================================
+
+// External file sharing activity
+M365SharePointAudit_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s contains "Share" or Operation_s contains "Anonymous"
+| project TimeGenerated, UserId_s, UserDisplayName_s, Operation_s, ObjectId_s, ClientIP_s
+| order by TimeGenerated desc
+
+// Large file downloads
+M365SharePointAudit_CL
+| where TimeGenerated > ago(24h)
+| where Operation_s =~ "FileDownloaded"
+| extend FileName = extract(@"([^/]+)$", 1, ObjectId_s)
+| project TimeGenerated, UserId_s, UserDisplayName_s, FileName, ObjectId_s, ClientIP_s
+| order by TimeGenerated desc
+
+// Files with sensitivity labels
+M365SharePointAudit_CL
+| where TimeGenerated > ago(7d)
+| where isnotempty(SensitivityLabelId_g)
+| join kind=leftouter (
+    M365SensitivityLabels_CL
+    | project Id_g, DisplayName_s
+) on $left.SensitivityLabelId_g == $right.Id_g
+| project TimeGenerated, UserId_s, UserDisplayName_s, ObjectId_s, LabelName = DisplayName_s
+| order by TimeGenerated desc
+
+// =============================================
+// TEAMS ANALYSIS
+// =============================================
+
+// Teams meeting activity
+M365TeamsAudit_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s contains "Meeting"
+| summarize MeetingCount = count() by UserId_s, UserDisplayName_s, bin(TimeGenerated, 1d)
+| order by TimeGenerated desc
+
+// External guest access in Teams
+M365TeamsAudit_CL
+| where TimeGenerated > ago(7d)
+| where UserType_s =~ "Guest" or UserId_s contains "#EXT#"
+| project TimeGenerated, UserId_s, UserDisplayName_s, Operation_s
+| order by TimeGenerated desc
+
+// =============================================
+// USER BEHAVIOR ANALYSIS
+// =============================================
+
+// Most active users across all services
+union M365*_CL
+| where TimeGenerated > ago(7d)
+| where isnotempty(UserId_s)
+| where Type !contains "Summary" and Type !contains "Error" and Type !contains "Labels"
+| summarize ActivityCount = count() by UserId_s, UserDisplayName_s, UserDepartment_s
+| order by ActivityCount desc
+| take 20
+
+// After-hours activity (outside 9 AM - 5 PM)
+union M365*_CL
+| where TimeGenerated > ago(7d)
+| extend Hour = hourofday(TimeGenerated)
+| where Hour < 9 or Hour > 17
+| where Type !contains "Summary" and Type !contains "Error"
+| summarize AfterHoursActivity = count() by UserId_s, UserDisplayName_s
+| order by AfterHoursActivity desc
+
+// Geographic analysis - users accessing from multiple locations
+union M365*_CL
+| where TimeGenerated > ago(7d)
+| where isnotempty(ClientIP_s)
+| summarize LocationCount = dcount(ClientIP_s) by UserId_s, UserDisplayName_s
+| where LocationCount > 3
+| order by LocationCount desc
+
+// =============================================
+// COMPLIANCE & REPORTING
+// =============================================
+
+// Audit log coverage verification
+search "M365*_CL"
+| where TimeGenerated > ago(24h)
+| summarize LastEvent = max(TimeGenerated), EventCount = count() by Type
+| order by LastEvent desc
+
+// Data enrichment quality check
+union M365*_CL
+| where TimeGenerated > ago(24h)
+| where Type !contains "Summary" and Type !contains "Error" and Type !contains "Labels"
+| summarize 
+    TotalEvents = count(),
+    EnrichedEvents = countif(isnotempty(UserDisplayName_s)),
+    DepartmentInfo = countif(isnotempty(UserDepartment_s))
+| extend EnrichmentRate = round((EnrichedEvents * 100.0) / TotalEvents, 2)
+
+// Sensitivity label usage statistics
+M365SensitivityLabels_CL
+| where TimeGenerated > ago(7d)
+| where IsActive_b == true
+| project DisplayName_s, Name_s, Id_g
+| join kind=inner (
+    union M365*_CL
+    | where TimeGenerated > ago(7d)
+    | where isnotempty(SensitivityLabelId_g)
+    | summarize UsageCount = count() by SensitivityLabelId_g
+) on $left.Id_g == $right.SensitivityLabelId_g
+| order by UsageCount desc
+
+// =============================================
+// PERFORMANCE MONITORING
+// =============================================
+
+// Collection performance trends
+M365AuditCollectionSummary_CL
+| where TimeGenerated > ago(7d)
+| summarize 
+    AvgDuration = avg(DurationSeconds_d),
+    MaxDuration = max(DurationSeconds_d),
+    AvgRecords = avg(TotalRecords_d),
+    SuccessRate = avg(toint(Success_b)) * 100
+    by bin(TimeGenerated, 1h)
+| order by TimeGenerated desc
+
+// Error analysis
+M365AuditCollectionErrors_CL
+| where TimeGenerated > ago(7d)
+| summarize ErrorCount = count() by ErrorMessage_s
+| order by ErrorCount desc
+
+// Data volume trends
+search "M365*_CL"
+| where TimeGenerated > ago(30d)
+| where Type !contains "Summary" and Type !contains "Error"
+| summarize EventCount = count() by Type, bin(TimeGenerated, 1d)
+| order by TimeGenerated desc
+
+// =============================================
+// ADVANCED CORRELATION QUERIES
+// =============================================
+
+// Correlate failed logins with subsequent successful activity
+let FailedLogins = M365AzureADAudit_CL
+    | where TimeGenerated > ago(1d)
+    | where Operation_s =~ "UserLoginFailed"
+    | project TimeGenerated, UserId_s, ClientIP_s;
+let SuccessfulActivity = union M365*_CL
+    | where TimeGenerated > ago(1d)
+    | where Type !contains "Summary" and Type !contains "Error"
+    | project TimeGenerated, UserId_s, Type, Operation_s;
+FailedLogins
+| join kind=inner SuccessfulActivity on UserId_s
+| where TimeGenerated1 > TimeGenerated
+| project FailedLogin = TimeGenerated, SuccessfulActivity = TimeGenerated1, UserId_s, ClientIP_s, ActivityType = Type, Operation_s
+| order by FailedLogin desc
+
+// Bulk operations detection (potential data exfiltration)
+union M365*_CL
+| where TimeGenerated > ago(1h)
+| where Operation_s in ("FileDownloaded", "FileCopied", "FileDeleted", "Send")
+| summarize OperationCount = count() by UserId_s, UserDisplayName_s, Operation_s, bin(TimeGenerated, 5m)
+| where OperationCount > 10
+| order by TimeGenerated desc, OperationCount desc
+
+// Cross-service user activity timeline
+let TimeRange = ago(24h);
+union M365*_CL
+| where TimeGenerated > TimeRange
+| where UserId_s == "user@domain.com"  // Replace with target user
+| where Type !contains "Summary" and Type !contains "Error"
+| project TimeGenerated, Service = Type, Operation_s, ObjectId_s
+| order by TimeGenerated desc
+
+// =============================================
+// DATA LOSS PREVENTION (DLP) ANALYSIS  
+// =============================================
+
+// DLP rule matches across all workloads
+M365DLP*_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s =~ "DlpRuleMatch"
+| extend Severity = case(
+    Severity_s =~ "Low", "🟡 Low",
+    Severity_s =~ "Medium", "🟠 Medium", 
+    Severity_s =~ "High", "🔴 High",
+    Severity_s
+)
+| project TimeGenerated, UserId_s, UserDisplayName_s, PolicyName_s, RuleName_s, 
+    Severity, Workload_s, IncidentId_g, Actions_s, ObjectId_s
+| order by TimeGenerated desc
+
+// DLP policy violations by user and severity
+M365DLP*_CL
+| where TimeGenerated > ago(30d)
+| where Operation_s =~ "DlpRuleMatch"
+| summarize ViolationCount = count(), 
+    HighSeverity = countif(Severity_s =~ "High"),
+    MediumSeverity = countif(Severity_s =~ "Medium"),
+    LowSeverity = countif(Severity_s =~ "Low")
+    by UserId_s, UserDisplayName_s, UserDepartment_s
+| order by ViolationCount desc
+
+// DLP actions taken (blocks, notifications, etc.)
+M365DLP*_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s =~ "DlpRuleMatch"
+| where isnotempty(Actions_s)
+| extend ActionsTaken = split(Actions_s, ",")
+| mv-expand ActionsTaken
+| extend ActionType = case(
+    ActionsTaken contains "Block", "🚫 Block",
+    ActionsTaken contains "Notify", "📧 Notify",
+    ActionsTaken contains "Encrypt", "🔒 Encrypt",
+    ActionsTaken contains "ApplyContentMarking", "🏷️ Label",
+    ActionsTaken contains "ExModifySubject", "📝 Modify Subject",
+    ActionsTaken contains "ExSetHeader", "📋 Set Header",
+    tostring(ActionsTaken)
+)
+| summarize ActionCount = count() by ActionType, PolicyName_s, Workload_s
+| order by ActionCount desc
+
+// DLP false positives and overrides
+M365DLP*_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s =~ "DlpRuleUndo"
+| extend Reason = case(
+    Reason_s =~ "Override", "👤 User Override",
+    Reason_s =~ "FalsePositive", "❌ False Positive",
+    Reason_s =~ "DocumentChange", "📄 Document Changed",
+    Reason_s =~ "PolicyChange", "📋 Policy Changed",
+    Reason_s
+)
+| project TimeGenerated, UserId_s, UserDisplayName_s, PolicyName_s, RuleName_s, 
+    Reason, Justification_s, ObjectId_s
+| order by TimeGenerated desc
+
+// Sensitive information types detected
+M365DLP*_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s =~ "DlpRuleMatch"
+| where isnotempty(SensitiveInfoTypeData_s)
+| extend SensitiveTypes = parse_json(SensitiveInfoTypeData_s)
+| mv-expand SensitiveTypes
+| extend SensitiveTypeName = tostring(SensitiveTypes.Name)
+| summarize DetectionCount = count() by SensitiveTypeName, PolicyName_s, Workload_s
+| order by DetectionCount desc
+
+// DLP endpoint violations (if available)
+M365DLP*_CL
+| where TimeGenerated > ago(7d)
+| where RecordType_d == 63  // DLPEndpoint
+| summarize EndpointViolations = count() by UserId_s, UserDisplayName_s, PolicyName_s, DeviceName_s
+| order by EndpointViolations desc
+
+// =============================================
+// ADVANCED MIP/DLP CORRELATION QUERIES
+// =============================================
+
+// Files with both sensitivity labels and DLP violations
+let LabeledFiles = M365*_CL
+    | where TimeGenerated > ago(7d)
+    | where isnotempty(SensitivityLabelId_g)
+    | project ObjectId_s, SensitivityLabelId_g, UserId_s, TimeGenerated;
+let DLPViolations = M365DLP*_CL
+    | where TimeGenerated > ago(7d)
+    | where Operation_s =~ "DlpRuleMatch"
+    | project ObjectId_s, PolicyName_s, RuleName_s, Severity_s, TimeGenerated as DLPTime;
+LabeledFiles
+| join kind=inner DLPViolations on ObjectId_s
+| join kind=leftouter (
+    M365SensitivityLabels_CL
+    | project Id_g, DisplayName_s
+) on $left.SensitivityLabelId_g == $right.Id_g
+| project ObjectId_s, UserId_s, LabelName = DisplayName_s, PolicyName_s, 
+    RuleName_s, Severity_s, LabelTime = TimeGenerated, DLPTime
+| order by DLPTime desc
+
+// Users with frequent label downgrades (potential insider risk)
+M365*_CL
+| where TimeGenerated > ago(30d)
+| where LabelEventType_d == 2  // LabelDowngraded
+| summarize DowngradeCount = count() by UserId_s, UserDisplayName_s, UserDepartment_s
+| where DowngradeCount > 5
+| order by DowngradeCount desc
+
+// Policy effectiveness analysis - labels vs DLP
+let LabelApplications = M365*_CL
+    | where TimeGenerated > ago(30d)
+    | where Operation_s in ("SensitivityLabelApplied", "FileSensitivityLabelChanged")
+    | summarize LabelCount = count() by bin(TimeGenerated, 1d);
+let DLPViolations = M365DLP*_CL
+    | where TimeGenerated > ago(30d)
+    | where Operation_s =~ "DlpRuleMatch"
+    | summarize DLPCount = count() by bin(TimeGenerated, 1d);
+LabelApplications
+| join kind=fullouter DLPViolations on TimeGenerated
+| extend LabelCount = iif(isempty(LabelCount), 0, LabelCount)
+| extend DLPCount = iif(isempty(DLPCount), 0, DLPCount)
+| extend ProtectionRatio = round((LabelCount * 100.0) / (LabelCount + DLPCount), 2)
+| project TimeGenerated, LabelCount, DLPCount, ProtectionRatio
+| order by TimeGenerated desc
+
+// Cross-application label consistency analysis
+M365*_CL
+| where TimeGenerated > ago(7d)
+| where isnotempty(SensitivityLabelId_g)
+| summarize LabelUsage = count() by Application_s, SensitivityLabelId_g
+| join kind=leftouter (
+    M365SensitivityLabels_CL
+    | project Id_g, DisplayName_s
+) on $left.SensitivityLabelId_g == $right.Id_g
+| project Application_s, LabelName = DisplayName_s, LabelUsage
+| order by Application_s, LabelUsage desc
+
+// =============================================
+// SECURITY ANALYSIS
+// =============================================
+
+// Failed login attempts (potential brute force)
+M365AzureADAudit_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s =~ "UserLoginFailed"
+| summarize FailedAttempts = count() by UserId_s, UserDisplayName_s, ClientIP_s
+| where FailedAttempts > 5
+| order by FailedAttempts desc
+
+// Administrative actions across all services
+union M365*_CL
+| where TimeGenerated > ago(24h)
+| where Operation_s contains "Admin" or Operation_s contains "Set" or Operation_s contains "Delete"
+| project TimeGenerated, Type, Operation_s, UserId_s, UserDisplayName_s, UserDepartment_s
+| order by TimeGenerated desc
+
+// DLP policy violations
+M365DLP*_CL
+| where TimeGenerated > ago(7d)
+| summarize ViolationCount = count() by PolicyName_s, Severity_s, UserId_s, UserDisplayName_s
+| order by ViolationCount desc
+
+// =============================================
+// EXCHANGE ANALYSIS
+// =============================================
+
+// Email forwarding rules (potential compromise indicator)
+M365ExchangeAudit_CL
+| where TimeGenerated > ago(30d)
+| where Operation_s contains "Forward" or Operation_s contains "Rule"
+| project TimeGenerated, UserId_s, UserDisplayName_s, Operation_s, Parameters_s
+| order by TimeGenerated desc
+
+// Mailbox access patterns
+M365ExchangeAudit_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s in ("MailboxLogin", "FolderBind")
+| summarize AccessCount = count() by UserId_s, UserDisplayName_s, ClientInfoString_s
+| order by AccessCount desc
+
+// Large email operations (potential data exfiltration)
+M365ExchangeAudit_CL
+| where TimeGenerated > ago(24h)
+| where Operation_s =~ "Send"
+| where Parameters_s contains "Size"
+| project TimeGenerated, UserId_s, UserDisplayName_s, Parameters_s, ClientIP_s
+| order by TimeGenerated desc
+
+// =============================================
+// SHAREPOINT & ONEDRIVE ANALYSIS
+// =============================================
+
+// External file sharing activity
+M365SharePointAudit_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s contains "Share" or Operation_s contains "Anonymous"
+| project TimeGenerated, UserId_s, UserDisplayName_s, Operation_s, ObjectId_s, ClientIP_s
+| order by TimeGenerated desc
+
+// Large file downloads
+M365SharePointAudit_CL
+| where TimeGenerated > ago(24h)
+| where Operation_s =~ "FileDownloaded"
+| extend FileName = extract(@"([^/]+)$", 1, ObjectId_s)
+| project TimeGenerated, UserId_s, UserDisplayName_s, FileName, ObjectId_s, ClientIP_s
+| order by TimeGenerated desc
+
+// Files with sensitivity labels
+M365SharePointAudit_CL
+| where TimeGenerated > ago(7d)
+| where isnotempty(SensitivityLabelId_g)
+| join kind=leftouter (
+    M365SensitivityLabels_CL
+    | project Id_g, DisplayName_s
+) on $left.SensitivityLabelId_g == $right.Id_g
+| project TimeGenerated, UserId_s, UserDisplayName_s, ObjectId_s, LabelName = DisplayName_s
+| order by TimeGenerated desc
+
+// =============================================
+// TEAMS ANALYSIS
+// =============================================
+
+// Teams meeting activity
+M365TeamsAudit_CL
+| where TimeGenerated > ago(7d)
+| where Operation_s contains "Meeting"
+| summarize MeetingCount = count() by UserId_s, UserDisplayName_s, bin(TimeGenerated, 1d)
+| order by TimeGenerated desc
+
+// External guest access in Teams
+M365TeamsAudit_CL
+| where TimeGenerated > ago(7d)
+| where UserType_s =~ "Guest" or UserId_s contains "#EXT#"
+| project TimeGenerated, UserId_s, UserDisplayName_s, Operation_s
+| order by TimeGenerated desc
+
+// =============================================
+// USER BEHAVIOR ANALYSIS
+// =============================================
+
+// Most active users across all services
+union M365*_CL
+| where TimeGenerated > ago(7d)
+| where isnotempty(UserId_s)
+| where Type !contains "Summary" and Type !contains "Error" and Type !contains "Labels"
+| summarize ActivityCount = count() by UserId_s, UserDisplayName_s, UserDepartment_s
+| order by ActivityCount desc
+| take 20
+
+// After-hours activity (outside 9 AM - 5 PM)
+union M365*_CL
+| where TimeGenerated > ago(7d)
+| extend Hour = hourofday(TimeGenerated)
+| where Hour < 9 or Hour > 17
+| where Type !contains "Summary" and Type !contains "Error"
+| summarize AfterHoursActivity = count() by UserId_s, UserDisplayName_s
+| order by AfterHoursActivity desc
+
+// Geographic analysis - users accessing from multiple locations
+union M365*_CL
+| where TimeGenerated > ago(7d)
+| where isnotempty(ClientIP_s)
+| summarize LocationCount = dcount(ClientIP_s) by UserId_s, UserDisplayName_s
+| where LocationCount > 3
+| order by LocationCount desc
+
+// =============================================
+// COMPLIANCE & REPORTING
+// =============================================
+
+// Audit log coverage verification
+search "M365*_CL"
+| where TimeGenerated > ago(24h)
+| summarize LastEvent = max(TimeGenerated), EventCount = count() by Type
+| order by LastEvent desc
+
+// Data enrichment quality check
+union M365*_CL
+| where TimeGenerated > ago(24h)
+| where Type !contains "Summary" and Type !contains "Error" and Type !contains "Labels"
+| summarize 
+    TotalEvents = count(),
+    EnrichedEvents = countif(isnotempty(UserDisplayName_s)),
+    DepartmentInfo = countif(isnotempty(UserDepartment_s))
+| extend EnrichmentRate = round((EnrichedEvents * 100.0) / TotalEvents, 2)
+
+// Sensitivity label usage statistics
+M365SensitivityLabels_CL
+| where TimeGenerated > ago(7d)
+| where IsActive_b == true
+| project DisplayName_s, Name_s, Id_g
+| join kind=inner (
+    union M365*_CL
+    | where TimeGenerated > ago(7d)
+    | where isnotempty(SensitivityLabelId_g)
+    | summarize UsageCount = count() by SensitivityLabelId_g
+) on $left.Id_g == $right.SensitivityLabelId_g
+| order by UsageCount desc
+
+// =============================================
+// PERFORMANCE MONITORING
+// =============================================
+
+// Collection performance trends
+M365AuditCollectionSummary_CL
+| where TimeGenerated > ago(7d)
+| summarize 
+    AvgDuration = avg(DurationSeconds_d),
+    MaxDuration = max(DurationSeconds_d),
+    AvgRecords = avg(TotalRecords_d),
+    SuccessRate = avg(toint(Success_b)) * 100
+    by bin(TimeGenerated, 1h)
+| order by TimeGenerated desc
+
+// Error analysis
+M365AuditCollectionErrors_CL
+| where TimeGenerated > ago(7d)
+| summarize ErrorCount = count() by ErrorMessage_s
+| order by ErrorCount desc
+
+// Data volume trends
+search "M365*_CL"
+| where TimeGenerated > ago(30d)
+| where Type !contains "Summary" and Type !contains "Error"
+| summarize EventCount = count() by Type, bin(TimeGenerated, 1d)
+| order by TimeGenerated desc
+
+// =============================================
+// ADVANCED CORRELATION QUERIES
+// =============================================
+
+// Correlate failed logins with subsequent successful activity
+let FailedLogins = M365AzureADAudit_CL
+    | where TimeGenerated > ago(1d)
+    | where Operation_s =~ "UserLoginFailed"
+    | project TimeGenerated, UserId_s, ClientIP_s;
+let SuccessfulActivity = union M365*_CL
+    | where TimeGenerated > ago(1d)
+    | where Type !contains "Summary" and Type !contains "Error"
+    | project TimeGenerated, UserId_s, Type, Operation_s;
+FailedLogins
+| join kind=inner SuccessfulActivity on UserId_s
+| where TimeGenerated1 > TimeGenerated
+| project FailedLogin = TimeGenerated, SuccessfulActivity = TimeGenerated1, UserId_s, ClientIP_s, ActivityType = Type, Operation_s
+| order by FailedLogin desc
+
+// Bulk operations detection (potential data exfiltration)
+union M365*_CL
+| where TimeGenerated > ago(1h)
+| where Operation_s in ("FileDownloaded", "FileCopied", "FileDeleted", "Send")
+| summarize OperationCount = count() by UserId_s, UserDisplayName_s, Operation_s, bin(TimeGenerated, 5m)
+| where OperationCount > 10
+| order by TimeGenerated desc, OperationCount desc
+
+// Cross-service user activity timeline
+let TimeRange = ago(24h);
+union M365*_CL
+| where TimeGenerated > TimeRange
+| where UserId_s == "user@domain.com"  // Replace with target user
+| where Type !contains "Summary" and Type !contains "Error"
+| project TimeGenerated, Service = Type, Operation_s, ObjectId_s
+| order by TimeGenerated desc

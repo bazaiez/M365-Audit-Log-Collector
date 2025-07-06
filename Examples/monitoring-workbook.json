@@ -1,0 +1,301 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# 🚀 M365 Audit Log Collector - Monitoring Dashboard\n\nThis workbook provides comprehensive monitoring for your M365 audit log collection solution.\n\n---"
+      },
+      "name": "Title"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "timerange",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "type": 4,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                }
+              ]
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "TimeRangeParameter"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## 📊 Collection Health Overview"
+      },
+      "name": "HealthSectionTitle"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "M365AuditCollectionSummary_CL\n| where TimeGenerated {TimeRange}\n| summarize \n    TotalRuns = count(),\n    SuccessfulRuns = countif(Success_b == true),\n    FailedRuns = countif(Success_b == false),\n    AvgDuration = avg(DurationSeconds_d),\n    TotalRecords = sum(TotalRecords_d)\n| extend \n    SuccessRate = round((SuccessfulRuns * 100.0) / TotalRuns, 2),\n    AvgDurationMin = round(AvgDuration / 60, 2)\n| project \n    [\"Success Rate %\"] = SuccessRate,\n    [\"Total Runs\"] = TotalRuns,\n    [\"Successful\"] = SuccessfulRuns,\n    [\"Failed\"] = FailedRuns,\n    [\"Avg Duration (min)\"] = AvgDurationMin,\n    [\"Total Records\"] = TotalRecords",
+        "size": 3,
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Success Rate %",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "Success Rate %",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            }
+          },
+          "showBorder": true
+        }
+      },
+      "name": "HealthMetrics"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "M365AuditCollectionSummary_CL\n| where TimeGenerated {TimeRange}\n| project TimeGenerated, TotalRecords_d, Success_b, DurationMinutes = DurationSeconds_d / 60\n| order by TimeGenerated asc",
+        "size": 0,
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "timechart"
+      },
+      "name": "CollectionTrend"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## 📈 Data Volume by Service"
+      },
+      "name": "DataVolumeSectionTitle"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "search \"M365*_CL\"\n| where TimeGenerated {TimeRange}\n| where Type !contains \"Summary\" and Type !contains \"Error\" and Type !contains \"Labels\"\n| summarize RecordCount = count() by Type\n| extend ServiceName = case(\n    Type == \"M365ExchangeAudit_CL\", \"📧 Exchange\",\n    Type == \"M365SharePointAudit_CL\", \"📁 SharePoint\",\n    Type == \"M365TeamsAudit_CL\", \"👥 Teams\",\n    Type == \"M365AzureADAudit_CL\", \"🔐 Azure AD\",\n    Type contains \"DLP\", \"🛡️ DLP Events\",\n    \"📊 Other\"\n)\n| order by RecordCount desc",
+        "size": 0,
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart"
+      },
+      "name": "DataVolumeChart"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## 🎯 Top Activities"
+      },
+      "name": "TopActivitiesSectionTitle"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "union M365*_CL\n| where TimeGenerated {TimeRange}\n| where Type !contains \"Summary\" and Type !contains \"Error\" and Type !contains \"Labels\"\n| summarize ActivityCount = count() by Operation_s\n| order by ActivityCount desc\n| take 15",
+        "size": 0,
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart"
+      },
+      "name": "TopActivitiesChart"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## 👤 Most Active Users"
+      },
+      "name": "ActiveUsersSectionTitle"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "union M365*_CL\n| where TimeGenerated {TimeRange}\n| where isnotempty(UserId_s)\n| where Type !contains \"Summary\" and Type !contains \"Error\" and Type !contains \"Labels\"\n| summarize ActivityCount = count() by UserId_s, UserDisplayName_s, UserDepartment_s\n| order by ActivityCount desc\n| take 20\n| project [\"User\"] = UserDisplayName_s, [\"Department\"] = UserDepartment_s, [\"Activity Count\"] = ActivityCount",
+        "size": 0,
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Activity Count",
+              "formatter": 3,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            }
+          ]
+        }
+      },
+      "name": "ActiveUsersTable"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## 🚨 Security Events"
+      },
+      "name": "SecuritySectionTitle"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "M365AzureADAudit_CL\n| where TimeGenerated {TimeRange}\n| where Operation_s =~ \"UserLoginFailed\"\n| summarize FailedAttempts = count() by UserId_s, UserDisplayName_s, ClientIP_s\n| where FailedAttempts > 3\n| order by FailedAttempts desc\n| take 10",
+        "size": 0,
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "FailedAttempts",
+              "formatter": 3,
+              "formatOptions": {
+                "palette": "red"
+              }
+            }
+          ]
+        }
+      },
+      "name": "FailedLoginsTable"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "M365DLP*_CL\n| where TimeGenerated {TimeRange}\n| summarize ViolationCount = count() by PolicyName_s, Severity_s\n| order by ViolationCount desc\n| take 10",
+        "size": 0,
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "DLPViolationsTable"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## 🔍 Data Quality & Enrichment"
+      },
+      "name": "DataQualitySectionTitle"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "union M365*_CL\n| where TimeGenerated {TimeRange}\n| where Type !contains \"Summary\" and Type !contains \"Error\" and Type !contains \"Labels\"\n| summarize \n    TotalEvents = count(),\n    EnrichedEvents = countif(isnotempty(UserDisplayName_s)),\n    DepartmentEnriched = countif(isnotempty(UserDepartment_s)),\n    ManagerEnriched = countif(isnotempty(UserManager_s))\n| extend \n    EnrichmentRate = round((EnrichedEvents * 100.0) / TotalEvents, 2),\n    DepartmentRate = round((DepartmentEnriched * 100.0) / TotalEvents, 2),\n    ManagerRate = round((ManagerEnriched * 100.0) / TotalEvents, 2)\n| project \n    [\"Total Events\"] = TotalEvents,\n    [\"User Enrichment %\"] = EnrichmentRate,\n    [\"Department Info %\"] = DepartmentRate,\n    [\"Manager Info %\"] = ManagerRate",
+        "size": 0,
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "tiles",
+        "tileSettings": {
+          "showBorder": true
+        }
+      },
+      "name": "DataQualityTiles"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## ⚠️ Errors & Issues"
+      },
+      "name": "ErrorsSectionTitle"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "M365AuditCollectionErrors_CL\n| where TimeGenerated {TimeRange}\n| summarize ErrorCount = count() by ErrorMessage_s\n| order by ErrorCount desc\n| take 10",
+        "size": 0,
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "ErrorsTable"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n\n### 💡 Tips for Using This Dashboard\n\n- **🕐 Time Range**: Use the time range selector at the top to focus on specific periods\n- **🔄 Refresh**: Click refresh to get the latest data\n- **📊 Export**: Use the export options to share data with your team\n- **🔍 Drill Down**: Click on chart elements to filter and drill down into specific data\n\n### 🚨 Key Metrics to Monitor\n\n- **Success Rate**: Should be >95%\n- **Duration**: Should be <10 minutes per collection\n- **Data Volume**: Monitor for unusual drops or spikes\n- **Enrichment Rate**: Should be >90% for internal users\n\n### 📞 Need Help?\n\nCheck the [Troubleshooting Guide](https://github.com/yourusername/M365-Audit-Log-Collector/blob/main/Documentation/TROUBLESHOOTING.md) for common issues and solutions."
+      },
+      "name": "TipsSection"
+    }
+  ],
+  "styleSettings": {
+    "paddingStyle": "wide"
+  },
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
